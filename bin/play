@@ -1,0 +1,62 @@
+#!/bin/bash
+
+query="$*"
+if [ -z "$query" ]; then
+    echo "Usage: play <search term>"
+    exit 1
+fi
+
+echo "Boss, I got your order: $query"
+echo "Now searching..."
+
+# Search YouTube for the first matching result
+json=$(yt-dlp "ytsearch1:${query}" --quiet --no-warnings --skip-download --print-json | head -n1)
+
+if [ -z "$json" ]; then
+    echo "Oops! Couldn't find your song."
+    exit 1
+fi
+
+video_id=$(echo "$json" | jq -r '.id')
+title=$(echo "$json" | jq -r '.title' | cut -d'|' -f1 | xargs)
+uploader=$(echo "$json" | jq -r '.uploader')
+duration_sec=$(echo "$json" | jq -r '.duration')
+view_count=$(echo "$json" | jq -r '.view_count')
+
+# Format duration
+format_duration() {
+    local total=$1
+    printf '%02d:%02d:%02d\n' $((total/3600)) $(((total%3600)/60)) $((total%60)) | sed 's/^00://'
+}
+duration=$(format_duration "$duration_sec")
+
+# Format views
+format_views() {
+    local v=$1
+    if [[ -z "$v" || "$v" == "null" ]]; then
+        echo "N/A"
+        return
+    fi
+    if (( v >= 1000000000 )); then
+        printf "%.1fB\n" "$(echo "$v / 1000000000" | bc -l)"
+    elif (( v >= 1000000 )); then
+        printf "%.1fM\n" "$(echo "$v / 1000000" | bc -l)"
+    elif (( v >= 1000 )); then
+        printf "%.1fk\n" "$(echo "$v / 1000" | bc -l)"
+    else
+        printf "%d\n" "$v"
+    fi
+}
+views_formatted=$(format_views "$view_count")
+
+# Display result
+echo "Yay! Found your song:"
+echo "▶️ $title"
+echo "   Channel: $uploader"
+echo "   Duration: $duration"
+echo "   Views: $views_formatted"
+
+url="https://www.youtube.com/watch?v=$video_id"
+
+# Just launch mpv (it already has pause/mute/seek keys built-in)
+mpv --no-video "$url"
